@@ -15,8 +15,11 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    name: Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    name: Test on ${{ matrix.os }}
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -34,31 +37,37 @@ jobs:
     needs: test
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        backend: [sdl2, sdl3, web]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        backend: [sdl2, sdl3, sdl3gpu, raylib, raylib_zig, glfw, wio, pugl]
         include:
           - # Add one extra job on windows for dx11
             os: windows-latest
             backend: dx11
-          - # Add raylib separately to specify extra args
-            os: ubuntu-latest
+          - # Add extra args to raylib
             backend: raylib
             args: "-Duse-lld=false"
+          - # Add wio with Vulkan renderer
+            backend: wio
+            args: "-Drenderer=vulkan"
+          - # Only compile the web backend on Ubuntu
+            os: ubuntu-latest
+            backend: web
 
     runs-on: ${{ matrix.os }}
-    # A failure on testing will stop all other builds
-    continue-on-error: ${{ matrix.backend != 'testing' }}
-
-    name: Compile ${{ matrix.backend }}
+    name: Compile ${{ matrix.backend }} on ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
 
       - name: Install libraries
-        if: ${{ matrix.os == 'ubuntu-latest' && (matrix.backend == 'sdl2' || matrix.backend == 'sdl3' || matrix.backend == 'raylib') }}
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           sudo apt-get update
-          sudo apt-get install mesa-common-dev libgl-dev libglx-dev libegl-dev libpulse-dev libxext-dev libxfixes-dev libxrender-dev libasound2-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev libxinerama-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y \
+            mesa-common-dev libgl-dev libglx-dev libegl-dev libgl1-mesa-dev libglu1-mesa-dev \
+            libpulse-dev libasound2-dev \
+            libxext-dev libxfixes-dev libxrender-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
+            libwayland-dev libxkbcommon-dev
 
       - name: Compile
         run: zig build -Dbackend=${{ matrix.backend }} ${{ matrix.args }}
